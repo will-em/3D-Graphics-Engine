@@ -128,6 +128,7 @@ def main():
 
                 transPts.append(point)
                 projPts.append(MatrixMulti(projMat, point))
+
             vec1 = [transPts[1][0]-transPts[0][0], transPts[1][1]-transPts[0][1], transPts[1][2]-transPts[0][2]]
             vec2 = [transPts[2][0]-transPts[0][0], transPts[2][1]-transPts[0][1], transPts[2][2]-transPts[0][2]]
 
