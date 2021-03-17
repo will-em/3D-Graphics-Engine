@@ -5,7 +5,7 @@ import copy
 import time
 import operator
 import math
-
+import os 
 class Triangle:
     def __init__(self, p):
         self.p = p
@@ -137,7 +137,10 @@ def main():
     drawMesh = False
     line_width = 2
     meshCube = Mesh()
-    meshCube.tris = loadMesh(r"/Users/William/github/3D-Graphics-Engine/VideoShip.obj")
+    dirname = os.path.dirname(__file__)
+    name = input("Please choose the obj file you want to render: ")
+    filename = os.path.join(dirname, name)
+    meshCube.tris = loadMesh(filename)
 
     camera = [0, 0, -1] #Initial camera-position in space
 
