@@ -9,7 +9,7 @@ import os
 import sys
 
 transDist = 10
-rotSpeed = 0.0
+rotSpeed = 0.05
 speed = 0.2
 rot_speed = 0.05
 
@@ -52,14 +52,19 @@ class Triangle:
     def getZmean(self):
         return (self.p[0][2]+self.p[1][2]+self.p[2][2])/3
 
-    #def __lt__(self, other):
-    #    selfzMean = (self.p[0][2]+self.p[1][2]+self.p[2][2])/3
-    #    otherzMean = (other.p[0][2]+other.p[1][2]+other.p[2][2])/3
-    #    return otherzMean>selfzMean
-
 class Mesh:
     def __init__(self):
         pass
+
+def large_affine_transform(mat, vec_mat):
+    ones_vec = np.ones(vec_mat.shape[1])
+    aug_vec_mat = np.vstack([vec_mat, ones_vec])
+
+    res = mat.T @ aug_vec_mat
+    w = res[-1][:]
+    res = res[:-1] / w
+
+    return res
 
 def affine_transform(mat, vec):
     aug_vec = np.append(vec, 1.0)
@@ -71,9 +76,10 @@ def affine_transform(mat, vec):
 
     return res[:-1]
 
-def loadMesh(path):
+def load_mesh(path):
     verts = [] #To store the pool of vertices
     tris = [] #Triangles
+
     with open(path, "r") as file:
         for row in file:
             subStr = row.split()
@@ -83,9 +89,9 @@ def loadMesh(path):
                 vert1 = verts[int(subStr[1])-1]
                 vert2 = verts[int(subStr[2])-1]
                 vert3 = verts[int(subStr[3])-1]
-                tris.append(Triangle(np.array([vert1, vert2, vert3])))
-
-    return tris
+                tris.append(np.array([vert1, vert2, vert3]))
+    tris_mat = np.array(tris).reshape(-1, 3).T
+    return tris_mat
 
 def rotMatX(theta):
     return np.array([
@@ -205,10 +211,10 @@ def main():
 
     drawMesh = False
     line_width = 2
-    meshCube = Mesh()
+    mesh = Mesh()
     dirname = os.path.dirname(__file__)
     filename = os.path.join(dirname, sys.argv[1])
-    meshCube.tris = loadMesh(filename)
+    mesh.tris_mat = load_mesh(filename)
 
     theta = 0
 
@@ -216,6 +222,9 @@ def main():
     camera_rot = rotMatY(0).dot(rotMatX(0)) # Initial camera orientation
     camera_velocity = np.zeros(3, dtype=np.float32)
     camera_rot_speed = np.zeros(3, dtype=np.float32)
+
+    light_direction = np.array([0, 0, -1])
+    light_direction = light_direction / np.linalg.norm(light_direction)
 
     while not done:
 
@@ -241,12 +250,12 @@ def main():
 
         view_mat = np.linalg.inv(camera_mat)
 
-        to_draw = []
-        for k, tri in enumerate(meshCube.tris):
+        '''
+        for tri in mesh.tris:
             trans_pts = []
             viewed_pts = []
             proj_pts = []
-            for point in tri.p:
+            for point in tri:
                 point = point.copy()
                 #Rotate
                 point = affine_transform(totMat, point)
@@ -278,14 +287,56 @@ def main():
                     light_dot=0
 
                 to_draw.append((proj_pts, light_dot))
+        '''
+        proj_pts = []
+        points = mesh.tris_mat
         
+        #Rotate
+        points = large_affine_transform(totMat, points)
+
+        #Translate
+        points[2][:] += transDist
+
+
+        # Calculate lighting
+        normals = np.cross(points[:, 1::3] - points[:, ::3], points[:, 2::3] - points[:, ::3], axis=0) 
+        normals /= np.linalg.norm(normals, axis=0)
+        diff_vecs = points[:, ::3] - camera_pos.reshape(3, 1)
+
+        projs = np.sum(diff_vecs * normals, axis=0)
+        normals = normals[:, projs < 0.0]
+
+        light_intensities = normals.T @ light_direction
+        light_intensities[light_intensities < 0.0] = 0
+
+        # Discard trangles that cannot be seen
+        points = points[:, np.repeat(projs, 3) < 0.0]
+
+        #Worldspace to Viewspace
+        points = large_affine_transform(view_mat, points)
+
+        #Project
+        points = large_affine_transform(proj_mat, points)
+
+        to_draw = []
+        i = 0
+        while i < points.shape[1]:
+            to_draw.append(points[:, i:i+3].T)
+            i+=3
+
         #Painter's algorithm
-        to_draw.sort(key = lambda x: (x[0][0][2]+x[0][1][2]+x[0][2][2])/3, reverse=True)
+        to_draw.sort(key = lambda x: (x[0][2]+x[1][2]+x[2][2])/3, reverse=True)
+        average_depths = np.mean(points[2, :].reshape(-1, 3), axis=1)
 
-        for tup in to_draw:
-            proj_pts = tup[0]
+        sorted_indices = np.argsort(-average_depths)
 
-            light_dot = tup[1]
+        light_intensities = light_intensities[sorted_indices]
+
+        for i, tri in enumerate(to_draw):
+            proj_pts = tri
+
+            light_dot = light_intensities[i]
+            
             #Draw triangles
             xs = [proj_pts[0][0]+1, proj_pts[1][0]+1, proj_pts[2][0]+1]
             ys = [proj_pts[0][1]+1, proj_pts[1][1]+1, proj_pts[2][1]+1]
