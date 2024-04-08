@@ -1,5 +1,6 @@
 import pygame
 from pygame import gfxdraw
+from pygame import Rect
 import numpy as np
 import copy
 import time
@@ -8,7 +9,7 @@ import math
 import os 
 import sys
 
-transDist = 10
+transDist = 5 #750
 rotSpeed = 0.05
 speed = 0.2
 rot_speed = 0.05
@@ -202,6 +203,7 @@ def main():
 
     pygame.init()
     screen = pygame.display.set_mode((width, height))
+    screen.set_alpha(None)
     done = False
     pygame.event.set_grab(True)
     pygame.mouse.set_pos = (width/2, height/2)
@@ -216,15 +218,18 @@ def main():
     filename = os.path.join(dirname, sys.argv[1])
     mesh.tris_mat = load_mesh(filename)
 
-    theta = 0
+    theta = np.pi
 
-    camera_pos = np.array([0.0, 0.0, -10.0]) # Initial camera position
+    camera_pos = np.array([0.0, 0.0, -1.0]) # Initial camera position
     camera_rot = rotMatY(0).dot(rotMatX(0)) # Initial camera orientation
     camera_velocity = np.zeros(3, dtype=np.float32)
     camera_rot_speed = np.zeros(3, dtype=np.float32)
 
     light_direction = np.array([0, 0, -1])
     light_direction = light_direction / np.linalg.norm(light_direction)
+
+    scale = np.array([width / 2.0, -height / 2.0]).reshape(2, 1)
+    offset = np.array([width / 2.0, height / 2.0]).reshape(2, 1)
 
     while not done:
 
@@ -239,7 +244,7 @@ def main():
         screen.fill((0, 0, 0))
 
         theta += rotSpeed
-        rotzMat = rotMatZ(theta/2)
+        rotzMat = rotMatZ(0)#theta/2)
         rotxMat = rotMatX(theta)
 
         totMat = rotzMat @ rotxMat
@@ -250,44 +255,6 @@ def main():
 
         view_mat = np.linalg.inv(camera_mat)
 
-        '''
-        for tri in mesh.tris:
-            trans_pts = []
-            viewed_pts = []
-            proj_pts = []
-            for point in tri:
-                point = point.copy()
-                #Rotate
-                point = affine_transform(totMat, point)
-
-                #Translate
-                point[2] += transDist
-                trans_pts.append(point)
-
-                #Worldspace to Viewspace
-                point = affine_transform(view_mat, point)
-                viewed_pts.append(point)
-
-                #Project
-                proj_pts.append(affine_transform(proj_mat, point))
-
-            vec1 = [trans_pts[1][0]-trans_pts[0][0], trans_pts[1][1]-trans_pts[0][1], trans_pts[1][2]-trans_pts[0][2]]
-            vec2 = [trans_pts[2][0]-trans_pts[0][0], trans_pts[2][1]-trans_pts[0][1], trans_pts[2][2]-trans_pts[0][2]]
-
-            normal = np.cross(vec1, vec2, axis=0)
-            normal = normal/(np.linalg.norm(normal)+1e-16)
-
-            diff_vec = trans_pts[0] - camera_pos
-
-            light_direction = np.array([0, 0, -1]) #Single Direction Light
-            if np.dot(diff_vec, normal) < 0.0:
-                light_direction = light_direction / np.linalg.norm(light_direction)
-                light_dot = np.dot(light_direction, normal)
-                if light_dot<0:
-                    light_dot=0
-
-                to_draw.append((proj_pts, light_dot))
-        '''
         proj_pts = []
         points = mesh.tris_mat
         
@@ -315,40 +282,39 @@ def main():
         #Worldspace to Viewspace
         points = large_affine_transform(view_mat, points)
 
-        #Project
-        points = large_affine_transform(proj_mat, points)
-
-        to_draw = []
-        i = 0
-        while i < points.shape[1]:
-            to_draw.append(points[:, i:i+3].T)
-            i+=3
-
-        #Painter's algorithm
-        to_draw.sort(key = lambda x: (x[0][2]+x[1][2]+x[2][2])/3, reverse=True)
         average_depths = np.mean(points[2, :].reshape(-1, 3), axis=1)
 
+        #Project
+        points = large_affine_transform(proj_mat, points)
+        
+        points = points[:2] # Remove z-dimension
+
+        #Painter's algorithm
         sorted_indices = np.argsort(-average_depths)
 
         light_intensities = light_intensities[sorted_indices]
 
-        for i, tri in enumerate(to_draw):
-            proj_pts = tri
+        new_positions = np.repeat(sorted_indices, 3) * 3 + np.tile(np.arange(3), sorted_indices.shape[0])
+        points = points[:, new_positions]
+
+        # Scale and translate to fit screen
+        points = scale * points + offset
+        points = points.astype(int)
+
+        for i in range(len(sorted_indices)):
+            proj_pts = points[:, 3*i:3*(i+1)]
 
             light_dot = light_intensities[i]
-            
-            #Draw triangles
-            xs = [proj_pts[0][0]+1, proj_pts[1][0]+1, proj_pts[2][0]+1]
-            ys = [proj_pts[0][1]+1, proj_pts[1][1]+1, proj_pts[2][1]+1]
-            #Scale
-            xs = [i*width/2 for i in xs]
-            ys = [j*height/2 for j in ys]
-            pygame.gfxdraw.filled_trigon(screen, int(xs[0]), height-int(ys[0]), int(xs[1]), height-int(ys[1]), int(xs[2]), height-int(ys[2]), (colors[0][0]*light_dot, colors[0][1]*light_dot, colors[0][2]*light_dot))
+
+            xs = proj_pts[0]
+            ys = proj_pts[1]
+
+            gfxdraw.filled_trigon(screen, xs[0], ys[0], xs[1], ys[1], xs[2], ys[2], (colors[0][0]*light_dot, colors[0][1]*light_dot, colors[0][2]*light_dot))
             if drawMesh:
                 pygame.draw.line(screen, (255, 255, 255), (xs[0], ys[0]), (xs[1], ys[1]), line_width)
                 pygame.draw.line(screen, (255, 255, 255), (xs[1], ys[1]), (xs[2], ys[2]), line_width)
                 pygame.draw.line(screen, (255, 255, 255), (xs[2], ys[2]), (xs[0], ys[0]), line_width)
-        pygame.display.flip()
+        pygame.display.update()
         clock.tick(60)
 
 if __name__ == "__main__":
