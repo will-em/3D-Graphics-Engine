@@ -39,20 +39,6 @@ color5 = (255, 255, 51)
 color6 = (102, 255, 255)
 colors = [color1, color1, color2, color2, color3, color3, color4, color4, color5, color5, color6, color6]
 
-class Triangle:
-    def __init__(self, p):
-        self.p = p
-
-    def __str__(self):
-        return str(self.points[0])
-
-    def getZmean(self):
-        return (self.p[0][2]+self.p[1][2]+self.p[2][2])/3
-
-class Mesh:
-    def __init__(self):
-        pass
-
 def large_affine_transform(mat, vec_mat):
     ones_vec = np.ones(vec_mat.shape[1])
     aug_vec_mat = np.vstack([vec_mat, ones_vec])
@@ -209,10 +195,9 @@ def main():
 
     drawMesh = False
     line_width = 2
-    mesh = Mesh()
     dirname = os.path.dirname(__file__)
     filename = os.path.join(dirname, sys.argv[1])
-    mesh.tris_mat = load_mesh(filename)
+    mesh = load_mesh(filename)
 
     theta = np.pi
 
@@ -252,7 +237,7 @@ def main():
         view_mat = np.linalg.inv(camera_mat)
 
         proj_pts = []
-        points = mesh.tris_mat
+        points = mesh
         
         #Rotate
         points = large_affine_transform(totMat, points)
