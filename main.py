@@ -2,10 +2,6 @@ import pygame
 from pygame import gfxdraw
 from pygame import Rect
 import numpy as np
-import copy
-import time
-import operator
-import math
 import os 
 import sys
 
