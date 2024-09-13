@@ -249,7 +249,7 @@ def main():
         # Calculate lighting
         normals = np.cross(points[:, 1::3] - points[:, ::3], points[:, 2::3] - points[:, ::3], axis=0) 
         normals /= np.linalg.norm(normals, axis=0)
-        diff_vecs = points[:, ::3] - camera_pos.reshape(3, 1)
+        diff_vecs = points[:, ::3] - camera_pos.reshape(3, 1) # Distance between vertices and camera 
 
         projs = np.sum(diff_vecs * normals, axis=0)
         normals = normals[:, projs < 0.0]
@@ -257,7 +257,7 @@ def main():
         light_intensities = normals.T @ light_direction
         light_intensities[light_intensities < 0.0] = 0
 
-        # Discard trangles that cannot be seen
+        # Discard trangles with normals pointing away from the camera
         points = points[:, np.repeat(projs, 3) < 0.0]
 
         #Worldspace to Viewspace
